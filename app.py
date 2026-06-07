@@ -82,25 +82,51 @@ with col_right:
     st.subheader("Risk group stratifications of disease")
     st.markdown("Observed vs Predicted risk by decile groups")
 
-    # 绘制十分位对比柱状图
     pred_val = model.predict_proba(X_val)[:, 1]
     df_dec = pd.DataFrame({"pred": pred_val, "y_true": y_val})
     df_dec["decile"] = pd.qcut(df_dec["pred"], q=10, labels=np.arange(1, 11), duplicates="drop")
 
-    pred_mean = df_dec.groupby("decile")["pred"].mean().values
-    obs_mean = df_dec.groupby("decile")["y_true"].mean().values
+    pred_mean = df_dec.groupby("decile")["pred"].mean().values * 100
+    obs_mean = df_dec.groupby("decile")["y_true"].mean().values * 100
     x_axis = np.arange(1, 11)
+
+    # 整体事件发生率（红色虚线位置）
+    overall_incidence = np.mean(y_val) * 100
 
     plt.rcParams["font.family"] = "Arial"
     fig, ax = plt.subplots(figsize=(7, 3.8), dpi=300)
     bar_width = 0.35
+
+    # 恢复原来的柱子颜色
     ax.bar(x_axis - bar_width/2, obs_mean, width=bar_width, label="Observed", color="#234b99")
     ax.bar(x_axis + bar_width/2, pred_mean, width=bar_width, label="Predicted", color="#89b8e8")
+
+    # 红色虚线基线
+    ax.axhline(
+        y=overall_incidence,
+        color="red",
+        linestyle="--",
+        linewidth=1,
+        alpha=0.7
+    )
+
+    # 柱子数值标注
+    for bar in ax.patches:
+        height = bar.get_height()
+        if height > 0:
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                height,
+                f"{height:.2f}",
+                ha="center", va="bottom", fontsize=8
+            )
+
     ax.set_xlabel("Decile groups (10% quantile each)")
     ax.set_ylabel("Proportion (%)")
     ax.set_title("Observed vs Predicted Risk Across Deciles")
     ax.set_xticks(x_axis)
     ax.legend()
+
     st.pyplot(fig, use_container_width=True)
 
     # 点击计算后展示个体风险
@@ -113,7 +139,6 @@ with col_right:
         st.divider()
         st.markdown(f"### Predicted Disease Risk: **{risk_percent:.2f}%**")
 
-        # 不同风险等级对应不同提示色
         if risk_level == "Low-risk":
             st.success(f"Risk Stratification: {risk_level}")
         elif risk_level == "Intermediate-risk":
@@ -127,25 +152,21 @@ st.subheader("Batch Prediction via Uploaded Excel Dataset")
 upload_file = st.file_uploader("Upload CSV / XLSX", type=["csv", "xlsx"])
 
 if upload_file:
-    # 兼容CSV / Excel
     if upload_file.name.endswith(".csv"):
         df_batch = pd.read_csv(upload_file)
     else:
         df_batch = pd.read_excel(upload_file)
 
-    # 批量预测
     p_batch = model.predict_proba(df_batch)[:, 1]
     df_batch["Predicted_Risk"] = np.round(p_batch, 4)
     df_batch["Risk_Stratification"] = [strat_risk(i) for i in p_batch]
 
-    # 表格列着色
     styled_df = df_batch.style.applymap(
         color_risk_text,
         subset=["Risk_Stratification"]
     )
     st.dataframe(styled_df, use_container_width=True)
 
-    # 下载结果
     csv_data = save_csv(df_batch)
     st.download_button(
         label="Download Result CSV",
